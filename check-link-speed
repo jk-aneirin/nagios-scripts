@@ -1,0 +1,71 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+my $all_links = `/sbin/ip link`;
+my @devs = ();
+while ($all_links =~ /^\d+: (eth\d+):.*state UP/mg) {
+    push @devs, $1;
+}
+
+my %speeds = ();
+for my $dev (@devs) {
+    $speeds{$dev} = speed($dev);
+}
+
+for my $dev (@devs) {
+    check_speed($speeds{$dev}, min_speed($dev));
+}
+
+output("OK");
+
+sub speed {
+    my ($dev) = @_;
+    my $status = `/sbin/ethtool $dev 2>/dev/null`;
+    if ($status =~ /Speed: (\S+)/) {
+        return $1;
+    }
+    print "Failed to get $dev speed";
+    exit 2;
+}
+
+sub output {
+    my ($status) = @_;
+    print "$status: ", join("; ", map "$_ $speeds{$_}", @devs), "\n";
+    if ($status eq "CRITICAL") {
+        exit 2;
+    } else {
+        # With setting the return status explicitly, somehow this script returns
+        # an UNKNOWN status code when it's executed by Nagios on shenzhen (Ubuntu
+        # 12.04.3 LTS).
+        exit 0;
+    }
+}
+
+sub critical {
+    output("CRITICAL");
+}
+
+sub unknown {
+    my ($speed) = @_;
+    return $speed eq "Unknown!" || $speed =~ /^\s*$/;
+}
+
+sub min_speed {
+    my ($dev) = @_;
+    my $addr = `/sbin/ip addr show dev $dev`;
+    if ($addr =~ /inet 10\.0\./) {
+        return 1000;
+    } else {
+        return 100;
+    }
+}
+
+sub check_speed {
+    my ($speed, $min_speed) = @_;
+    my $speed_num = $speed;
+    $speed_num =~ s/Mb\/s$//;
+    if (unknown($speed) || $speed_num < $min_speed) {
+        critical();
+    }
+}
