@@ -1,0 +1,20 @@
+#!/usr/bin/python3
+
+import requests, sys
+
+STATUS = {
+  'green': (0, 'OK'),
+  'yellow': (1, 'WARNING'),
+  'red': (2, 'CRITICAL')
+}
+
+try:
+  host = sys.argv[1]
+  json = requests.get("http://%s:9200/_cluster/health" % host, timeout=5).json()
+
+  print("%s - %s" % (STATUS[json['status']][1], json))
+  sys.exit(STATUS[json['status']][0])
+
+except Exception as e:
+  print("CRITICAL - %s" % str(e))
+  sys.exit(2)
